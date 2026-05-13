@@ -121,71 +121,78 @@ public class SarifResult implements Comparable<SarifResult> {
 
             HttpMessage httpMessage = alert.getMessage();
 
-            /* ----------- */
-            /* Web request */
-            /* ----------- */
-            SarifWebRequest webRequest = result.webRequest;
-            HttpRequestHeader requestHeader = httpMessage.getRequestHeader();
-            boolean isBinaryRequest = binaryContentDetector.isBinaryContent(requestHeader);
-
-            handleBody(
-                    webRequest.body,
-                    isBinaryRequest,
-                    httpMessage.getRequestBody(),
-                    MAX_ALLOWED_REQUEST_BODY,
-                    attackVector);
-
-            List<HttpHeaderField> requestHeaders = requestHeader.getHeaders();
-            for (HttpHeaderField headerField : requestHeaders) {
-
-                String headerName = headerField.getName();
-                String headerValue = headerField.getValue();
-
-                String safeHeaderValue =
-                        headerCredentialHider.createSafeHeaderValue(headerName, headerValue);
-
-                webRequest.headers.put(headerName, safeHeaderValue);
-            }
-            SarifProtocolData requestProtocolData =
-                    SarifProtocolData.parseProtocolAndVersion(requestHeader.getVersion());
-            webRequest.protocol = requestProtocolData.getProtocol();
-            webRequest.version = requestProtocolData.getVersion();
-            webRequest.target = safeToString(requestHeader.getURI());
-            webRequest.method = requestHeader.getMethod();
-
-            /* ------------ */
-            /* Web response */
-            /* ------------ */
             String shortEvidenceSnippet =
                     bigContentShrinker.shrinkTextWithoutMarkers(
                             alert.getEvidence(), MAX_ALLOWED_EVIDENCE_SNIPPET_SIZE);
+
             SarifWebResponse webResponse = result.webResponse;
-            HttpResponseHeader responseHeader = httpMessage.getResponseHeader();
 
-            boolean isBinaryResponse = binaryContentDetector.isBinaryContent(responseHeader);
+            // Match the null-message handling already applied to the Thymeleaf templates in
+            // commit e8e4b908d6 (zaproxy/zaproxy#6880): alert.getMessage() can be null after
+            // ExtensionAlert clears it for GC and the historyRef lookup later fails.
+            if (httpMessage != null) {
+                /* ----------- */
+                /* Web request */
+                /* ----------- */
+                SarifWebRequest webRequest = result.webRequest;
+                HttpRequestHeader requestHeader = httpMessage.getRequestHeader();
+                boolean isBinaryRequest = binaryContentDetector.isBinaryContent(requestHeader);
 
-            handleBody(
-                    webResponse.body,
-                    isBinaryResponse,
-                    httpMessage.getResponseBody(),
-                    MAX_ALLOWED_RESPONSE_BODY,
-                    shortEvidenceSnippet);
+                handleBody(
+                        webRequest.body,
+                        isBinaryRequest,
+                        httpMessage.getRequestBody(),
+                        MAX_ALLOWED_REQUEST_BODY,
+                        attackVector);
 
-            responseHeader.getNormalisedContentTypeValue();
+                List<HttpHeaderField> requestHeaders = requestHeader.getHeaders();
+                for (HttpHeaderField headerField : requestHeaders) {
 
-            List<HttpHeaderField> responseHeaders = responseHeader.getHeaders();
-            for (HttpHeaderField headerField : responseHeaders) {
-                webResponse.headers.put(headerField.getName(), headerField.getValue());
+                    String headerName = headerField.getName();
+                    String headerValue = headerField.getValue();
+
+                    String safeHeaderValue =
+                            headerCredentialHider.createSafeHeaderValue(headerName, headerValue);
+
+                    webRequest.headers.put(headerName, safeHeaderValue);
+                }
+                SarifProtocolData requestProtocolData =
+                        SarifProtocolData.parseProtocolAndVersion(requestHeader.getVersion());
+                webRequest.protocol = requestProtocolData.getProtocol();
+                webRequest.version = requestProtocolData.getVersion();
+                webRequest.target = safeToString(requestHeader.getURI());
+                webRequest.method = requestHeader.getMethod();
+
+                /* ------------ */
+                /* Web response */
+                /* ------------ */
+                HttpResponseHeader responseHeader = httpMessage.getResponseHeader();
+
+                boolean isBinaryResponse = binaryContentDetector.isBinaryContent(responseHeader);
+
+                handleBody(
+                        webResponse.body,
+                        isBinaryResponse,
+                        httpMessage.getResponseBody(),
+                        MAX_ALLOWED_RESPONSE_BODY,
+                        shortEvidenceSnippet);
+
+                responseHeader.getNormalisedContentTypeValue();
+
+                List<HttpHeaderField> responseHeaders = responseHeader.getHeaders();
+                for (HttpHeaderField headerField : responseHeaders) {
+                    webResponse.headers.put(headerField.getName(), headerField.getValue());
+                }
+                webResponse.statusCode = responseHeader.getStatusCode();
+                webResponse.reasonPhrase = responseHeader.getReasonPhrase();
+
+                SarifProtocolData responseProtocolData =
+                        SarifProtocolData.parseProtocolAndVersion(responseHeader.getVersion());
+                webResponse.protocol = responseProtocolData.getProtocol();
+                webResponse.version = responseProtocolData.getVersion();
+
+                webResponse.noResponseReceived = responseHeader.isConnectionClose();
             }
-            webResponse.statusCode = responseHeader.getStatusCode();
-            webResponse.reasonPhrase = responseHeader.getReasonPhrase();
-
-            SarifProtocolData responseProtocolData =
-                    SarifProtocolData.parseProtocolAndVersion(responseHeader.getVersion());
-            webResponse.protocol = responseProtocolData.getProtocol();
-            webResponse.version = responseProtocolData.getVersion();
-
-            webResponse.noResponseReceived = responseHeader.isConnectionClose();
 
             /* build physical location region by response body + evidence */
             resultLocation.physicalLocation.region.snippet =

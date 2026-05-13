@@ -718,6 +718,7 @@ class ExtensionReportsUnitTest extends TestUtils {
                 "modern",
                 "high-level-report",
                 "risk-confidence-html",
+                "sarif-json",
                 "traditional-html",
                 "traditional-html-plus",
                 "traditional-json",
